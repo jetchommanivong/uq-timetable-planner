@@ -40,8 +40,11 @@ a brand-new empty database needs no migration step.
 How it fits together on Vercel:
 
 - The Vite build is served as static files from `dist`.
-- [api/[...path].js](api) mounts the Express app as one function. The catch-all
-  filename keeps the original URL, so the app's own `/api/...` routes still match.
+- [api/index.js](api/index.js) mounts the Express app as one function. The
+  `/api/(.*)` rewrite sends API requests to it with the original URL intact, so
+  the app's own `/api/...` routes still match. Do **not** rename this to a
+  `[...path].js` catch-all — that is a Next.js convention and Vercel's plain
+  /api directory ignores it, making every route 404.
 - `vercel.json` rewrites `/s/*` to the SPA shell, so share links survive a
   refresh or being opened cold. It is scoped to `/s/` so it can't shadow the API.
   (That file is schema-validated by Vercel — it rejects unknown keys, so no
