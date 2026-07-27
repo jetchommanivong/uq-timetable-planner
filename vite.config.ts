@@ -24,6 +24,22 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        configure: (proxy) => {
+          // When the API server is down or restarting, Vite's default is a bare
+          // 500 with no body — indistinguishable from an application bug. Send
+          // a real message instead so the app's error banner explains it.
+          proxy.on('error', (_err, _req, res) => {
+            if (res && 'writeHead' in res && !res.headersSent) {
+              res.writeHead(503, { 'Content-Type': 'application/json' })
+              res.end(
+                JSON.stringify({
+                  error:
+                    "The API server isn't responding. It may still be starting, or port 3001 is held by an old process — check the terminal running `npm run dev`.",
+                }),
+              )
+            }
+          })
+        },
       },
     },
   },
