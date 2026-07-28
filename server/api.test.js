@@ -210,6 +210,47 @@ describe('API on Postgres', () => {
     expect(list.body.timetables[0].id).not.toBe(timetableId)
   })
 
+  it('lets another user follow a shared timetable and overlays it read-only', async () => {
+    const bob = client()
+    await bob('POST', '/api/auth/register', {
+      email: 'bob@example.com', displayName: 'Bob', password: 'password123',
+    })
+
+    const bogus = await bob('POST', '/api/follows', { shareToken: 'does-not-exist' })
+    expect(bogus.status).toBe(404)
+
+    // Following your own timetable makes no sense.
+    const own = await alice('POST', '/api/follows', { shareToken })
+    expect(own.status).toBe(400)
+
+    const added = await bob('POST', '/api/follows', { shareToken })
+    expect(added.status).toBe(201)
+    expect(added.body.follows).toHaveLength(1)
+    expect(added.body.follows[0].ownerName).toBe('Alice')
+    expect(added.body.follows[0].available).toBe(true)
+    expect(added.body.follows[0].classes.length).toBeGreaterThan(0)
+    const followId = added.body.follows[0].id
+
+    // Re-adding the same link is a harmless no-op, not a duplicate.
+    const again = await bob('POST', '/api/follows', { shareToken })
+    expect(again.body.follows).toHaveLength(1)
+
+    const listed = await bob('GET', '/api/follows')
+    expect(listed.body.follows).toHaveLength(1)
+
+    // Alice turns sharing off: the follow survives but is marked unavailable.
+    await alice('PATCH', `/api/timetables/${timetableId}`, { isShared: false })
+    const stale = await bob('GET', '/api/follows')
+    expect(stale.body.follows[0].available).toBe(false)
+    expect(stale.body.follows[0].classes).toEqual([])
+
+    // Restore sharing so later assertions in this file aren't affected.
+    await alice('PATCH', `/api/timetables/${timetableId}`, { isShared: true })
+
+    const removed = await bob('DELETE', `/api/follows/${followId}`)
+    expect(removed.body.follows).toHaveLength(0)
+  })
+
   it('requires a session for private routes', async () => {
     const anon = await fetch(`${base}/api/timetables`)
     expect(anon.status).toBe(401)

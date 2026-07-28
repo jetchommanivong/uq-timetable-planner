@@ -33,7 +33,18 @@ const CATEGORY_SWATCHES: Record<Category, Swatch> = {
   other:    { bg: 'rgb(241 245 249 / 0.9)',  border: 'rgb(100 116 139)', text: 'rgb(30 41 59)',  dot: 'rgb(100 116 139)' },
 }
 
-/** Stable hash so a course keeps its colour between page loads. */
+// Distinct from COURSE_PALETTE's hues so a followed person's blocks never
+// read as "just another one of my courses" at a glance.
+const PERSON_PALETTE: Swatch[] = [
+  { bg: 'rgb(204 251 241 / 0.85)', border: 'rgb(20 184 166)', text: 'rgb(19 78 74)', dot: 'rgb(20 184 166)' },
+  { bg: 'rgb(254 215 170 / 0.85)', border: 'rgb(217 119 6)', text: 'rgb(120 53 15)', dot: 'rgb(217 119 6)' },
+  { bg: 'rgb(254 205 211 / 0.85)', border: 'rgb(225 29 72)', text: 'rgb(136 19 55)', dot: 'rgb(225 29 72)' },
+  { bg: 'rgb(233 213 255 / 0.85)', border: 'rgb(147 51 234)', text: 'rgb(88 28 135)', dot: 'rgb(147 51 234)' },
+  { bg: 'rgb(190 242 100 / 0.6)',  border: 'rgb(101 163 13)', text: 'rgb(54 83 20)',  dot: 'rgb(101 163 13)' },
+  { bg: 'rgb(191 219 254 / 0.85)', border: 'rgb(37 99 235)',  text: 'rgb(30 58 138)', dot: 'rgb(37 99 235)' },
+]
+
+/** Stable hash so a course (or person) keeps its colour between page loads. */
 function hash(text: string): number {
   let h = 0
   for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0
@@ -42,6 +53,11 @@ function hash(text: string): number {
 
 export function courseSwatch(code: string): Swatch {
   return COURSE_PALETTE[hash(code) % COURSE_PALETTE.length]
+}
+
+/** `key` should be stable per person, e.g. their followed timetable's id. */
+export function personSwatch(key: string): Swatch {
+  return PERSON_PALETTE[hash(key) % PERSON_PALETTE.length]
 }
 
 export function categorySwatch(category: Category): Swatch {

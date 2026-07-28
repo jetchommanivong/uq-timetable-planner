@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { CustomEvent, Occurrence, PickedClass } from '../types'
 import { DAYS } from '../types'
-import { categorySwatch, courseSwatch } from '../lib/colors'
+import { categorySwatch, courseSwatch, personSwatch } from '../lib/colors'
 import {
   addDays,
   findClashes,
@@ -9,17 +9,26 @@ import {
   formatRange,
   gridBounds,
   layoutDay,
-  occurrencesForWeek,
+  taggedOccurrences,
   toISO,
 } from '../lib/schedule'
 
 const PX_PER_MIN = 1.35
+
+/** A followed person's schedule, overlaid read-only on the viewer's own grid. */
+export interface OverlayPerson {
+  key: string
+  name: string
+  classes: PickedClass[]
+  events: CustomEvent[]
+}
 
 interface Props {
   classes: PickedClass[]
   events: CustomEvent[]
   weekStart: Date
   readOnly?: boolean
+  overlays?: OverlayPerson[]
   onSelectEvent?: (event: CustomEvent) => void
   onRemoveClass?: (cls: PickedClass) => void
 }
@@ -29,13 +38,17 @@ export function WeekGrid({
   events,
   weekStart,
   readOnly = false,
+  overlays = [],
   onSelectEvent,
   onRemoveClass,
 }: Props) {
-  const occurrences = useMemo(
-    () => occurrencesForWeek(classes, events, weekStart),
-    [classes, events, weekStart],
-  )
+  const occurrences = useMemo(() => {
+    const own = taggedOccurrences(classes, events, weekStart)
+    const others = overlays.flatMap((p) =>
+      taggedOccurrences(p.classes, p.events, weekStart, { key: p.key, name: p.name }),
+    )
+    return [...own, ...others]
+  }, [classes, events, weekStart, overlays])
   const clashes = useMemo(() => findClashes(occurrences), [occurrences])
   const bounds = useMemo(() => gridBounds(occurrences), [occurrences])
 
@@ -158,19 +171,25 @@ function Block({
   onSelectEvent,
   onRemoveClass,
 }: BlockProps) {
-  const swatch =
-    o.kind === 'class' ? courseSwatch(o.title) : categorySwatch(o.category ?? 'other')
+  const swatch = o.person
+    ? personSwatch(o.person.key)
+    : o.kind === 'class'
+      ? courseSwatch(o.title)
+      : categorySwatch(o.category ?? 'other')
 
   const widthPct = 100 / o.columnCount
   const compact = height < 56
 
-  const clickable = !readOnly && (o.kind === 'event' ? !!onSelectEvent : !!onRemoveClass)
+  // Overlay blocks belong to someone else's timetable — never clickable.
+  const clickable = !readOnly && !o.person && (o.kind === 'event' ? !!onSelectEvent : !!onRemoveClass)
 
   function handleClick() {
-    if (readOnly) return
+    if (readOnly || o.person) return
     if (o.kind === 'event' && o.eventRef) onSelectEvent?.(o.eventRef)
     if (o.kind === 'class' && o.classRef) onRemoveClass?.(o.classRef)
   }
+
+  const subtitle = o.person ? `${o.person.name} · ${o.subtitle}` : o.subtitle
 
   return (
     <div
@@ -183,7 +202,7 @@ function Block({
           handleClick()
         }
       }}
-      title={`${o.title} · ${o.subtitle}\n${formatRange(o.startMins, o.endMins)}${
+      title={`${o.title} · ${subtitle}\n${formatRange(o.startMins, o.endMins)}${
         o.location ? `\n${o.location}` : ''
       }`}
       className={`absolute overflow-hidden rounded-md border-l-[3px] px-2 py-1.5 text-left shadow-sm transition ${
@@ -202,7 +221,7 @@ function Block({
       <div className="truncate text-sm font-semibold leading-tight">{o.title}</div>
       {!compact && (
         <>
-          <div className="truncate text-xs leading-tight opacity-80">{o.subtitle}</div>
+          <div className="truncate text-xs leading-tight opacity-80">{subtitle}</div>
           <div className="truncate text-xs leading-tight opacity-70">
             {formatRange(o.startMins, o.endMins)}
           </div>

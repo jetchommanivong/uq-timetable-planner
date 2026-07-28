@@ -104,10 +104,22 @@ CREATE TABLE IF NOT EXISTS custom_events (
   color         TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_tt_user   ON timetables(user_id);
-CREATE INDEX IF NOT EXISTS idx_cls_tt    ON uq_classes(timetable_id);
-CREATE INDEX IF NOT EXISTS idx_ev_tt     ON custom_events(timetable_id);
-CREATE INDEX IF NOT EXISTS idx_sess_user ON sessions(user_id);
+-- A user viewing someone else's timetable as a read-only overlay on their own.
+-- Reuses the share-link mechanism: you can only follow a timetable that is
+-- (or was, at the time you added it) shared via a share_token.
+CREATE TABLE IF NOT EXISTS followed_timetables (
+  id            INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  follower_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  timetable_id  INTEGER NOT NULL REFERENCES timetables(id) ON DELETE CASCADE,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (follower_id, timetable_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tt_user     ON timetables(user_id);
+CREATE INDEX IF NOT EXISTS idx_cls_tt      ON uq_classes(timetable_id);
+CREATE INDEX IF NOT EXISTS idx_ev_tt       ON custom_events(timetable_id);
+CREATE INDEX IF NOT EXISTS idx_sess_user   ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_follow_user ON followed_timetables(follower_id);
 `
 
 let schemaPromise = null

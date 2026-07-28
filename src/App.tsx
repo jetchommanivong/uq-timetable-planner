@@ -3,6 +3,7 @@ import { api } from './api'
 import type {
   CustomEvent,
   Day,
+  FollowedTimetable,
   PickedClass,
   Timetable,
   TimetableSummary,
@@ -35,6 +36,8 @@ function PlannerApp() {
   const [booted, setBooted] = useState(false)
   const [summaries, setSummaries] = useState<TimetableSummary[]>([])
   const [timetable, setTimetable] = useState<Timetable | null>(null)
+  const [follows, setFollows] = useState<FollowedTimetable[]>([])
+  const [visibleFollowIds, setVisibleFollowIds] = useState<Set<number>>(new Set())
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
   const [searchOpen, setSearchOpen] = useState(false)
   // `editing: false` with an event present means "duplicate this one".
@@ -59,16 +62,27 @@ function PlannerApp() {
     setTimetable(full)
   }, [])
 
+  /** Refreshes the followed-people list. New follows default to visible. */
+  const loadFollows = useCallback(async () => {
+    const { follows: fetched } = await api.listFollows()
+    setFollows(fetched)
+    setVisibleFollowIds((prev) => {
+      const next = new Set(prev)
+      for (const f of fetched) if (!prev.has(f.id)) next.add(f.id)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     api
       .me()
       .then(async ({ user }) => {
         setUser(user)
-        if (user) await loadTimetables()
+        if (user) await Promise.all([loadTimetables(), loadFollows()])
       })
       .catch(() => {})
       .finally(() => setBooted(true))
-  }, [loadTimetables])
+  }, [loadTimetables, loadFollows])
 
   // Semesters rarely overlap with "today", so opening on an empty week makes the
   // app look broken. When the current week has nothing, jump to the first week
@@ -118,7 +132,7 @@ function PlannerApp() {
       <AuthScreen
         onSignedIn={async (u) => {
           setUser(u)
-          await loadTimetables()
+          await Promise.all([loadTimetables(), loadFollows()])
         }}
       />
     )
@@ -187,6 +201,50 @@ function PlannerApp() {
     }
   }
 
+  /** Accepts either a bare share code or a full pasted `/s/:token` link. */
+  function parseShareToken(input: string): string {
+    const trimmed = input.trim()
+    const marker = '/s/'
+    const at = trimmed.indexOf(marker)
+    return at === -1 ? trimmed : decodeURIComponent(trimmed.slice(at + marker.length))
+  }
+
+  async function handleAddFollow(input: string): Promise<boolean> {
+    setError(null)
+    try {
+      const { follows: updated } = await api.addFollow(parseShareToken(input))
+      setFollows(updated)
+      setVisibleFollowIds((prev) => {
+        const next = new Set(prev)
+        for (const f of updated) if (!prev.has(f.id)) next.add(f.id)
+        return next
+      })
+      return true
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not add that timetable')
+      return false
+    }
+  }
+
+  async function handleRemoveFollow(id: number) {
+    setError(null)
+    try {
+      const { follows: updated } = await api.removeFollow(id)
+      setFollows(updated)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove that timetable')
+    }
+  }
+
+  function handleToggleFollowVisible(id: number) {
+    setVisibleFollowIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   /**
    * Saves the dialog. A weekly event can name several days at once, which
    * becomes one event per day so each can later be edited or removed alone.
@@ -222,6 +280,8 @@ function PlannerApp() {
             setUser(null)
             setTimetable(null)
             setSummaries([])
+            setFollows([])
+            setVisibleFollowIds(new Set())
           }}
           className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
@@ -272,6 +332,11 @@ function PlannerApp() {
               }
               onExportIcs={handleExportIcs}
               onExportImage={handleExportImage}
+              follows={follows}
+              visibleFollowIds={visibleFollowIds}
+              onToggleFollowVisible={handleToggleFollowVisible}
+              onAddFollow={handleAddFollow}
+              onRemoveFollow={handleRemoveFollow}
             />
 
             <main className="flex min-w-0 flex-1 flex-col gap-3 p-4">
@@ -291,6 +356,14 @@ function PlannerApp() {
                   classes={timetable.classes}
                   events={timetable.events}
                   weekStart={weekStart}
+                  overlays={follows
+                    .filter((f) => f.available && visibleFollowIds.has(f.id))
+                    .map((f) => ({
+                      key: String(f.timetableId),
+                      name: f.ownerName,
+                      classes: f.classes,
+                      events: f.events,
+                    }))}
                   onSelectEvent={(event) => setEventDialog({ open: true, event, editing: true })}
                   onRemoveClass={(cls) => mutate(() => api.removeClass(timetable.id, cls.id))}
                 />

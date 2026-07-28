@@ -117,6 +117,17 @@ export interface SharedTimetable {
   events: CustomEvent[]
 }
 
+/** Someone else's timetable, followed via their share link and overlaid read-only. */
+export interface FollowedTimetable {
+  id: number
+  timetableId: number
+  ownerName: string
+  timetableName: string
+  available: boolean
+  classes: PickedClass[]
+  events: CustomEvent[]
+}
+
 /** A single positioned block on the calendar grid. */
 export interface Occurrence {
   key: string
@@ -131,4 +142,6 @@ export interface Occurrence {
   category: Category | null
   classRef?: PickedClass
   eventRef?: CustomEvent
+  /** Set when this block belongs to a followed timetable, not the viewer's own. */
+  person?: { key: string; name: string }
 }

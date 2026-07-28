@@ -1,4 +1,5 @@
 import type {
+  FollowedTimetable,
   SharedTimetable,
   Timetable,
   TimetableSummary,
@@ -95,4 +96,15 @@ export const api = {
 
   getShared: (token: string) =>
     request<{ timetable: SharedTimetable }>(`/api/share/${encodeURIComponent(token)}`),
+
+  listFollows: () => request<{ follows: FollowedTimetable[] }>('/api/follows'),
+
+  addFollow: (shareToken: string) =>
+    request<{ follows: FollowedTimetable[] }>('/api/follows', {
+      method: 'POST',
+      body: JSON.stringify({ shareToken }),
+    }),
+
+  removeFollow: (id: number) =>
+    request<{ follows: FollowedTimetable[] }>(`/api/follows/${id}`, { method: 'DELETE' }),
 }

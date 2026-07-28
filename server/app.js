@@ -392,6 +392,97 @@ app.get('/api/share/:token', wrap(async (req, res) => {
   })
 }))
 
+/* ---------------------------------------------------------------- follows -- */
+
+/**
+ * Loads everyone the given user follows. A follow whose source timetable has
+ * since been un-shared stays in the list (so the connection isn't silently
+ * dropped) but comes back with `available: false` and no schedule data.
+ */
+async function loadFollows(followerId) {
+  const rows = await all(
+    `SELECT f.id, f.timetable_id AS "timetableId", t.name AS "timetableName",
+            t.is_shared AS "available", u.display_name AS "ownerName"
+       FROM followed_timetables f
+       JOIN timetables t ON t.id = f.timetable_id
+       JOIN users u ON u.id = t.user_id
+      WHERE f.follower_id = $1
+      ORDER BY f.created_at`,
+    [followerId],
+  )
+
+  for (const row of rows) {
+    if (!row.available) {
+      row.classes = []
+      row.events = []
+      continue
+    }
+    row.classes = await all(
+      `SELECT id, subject_code AS "subjectCode", callista_code AS "callistaCode",
+              description, semester, campus,
+              activity_group_code AS "activityGroupCode", activity_code AS "activityCode",
+              activity_type AS "activityType", day_of_week AS "dayOfWeek",
+              start_time AS "startTime", duration_mins AS "durationMins",
+              location, staff, color, dates
+         FROM uq_classes WHERE timetable_id = $1
+        ORDER BY callista_code, activity_group_code`,
+      [row.timetableId],
+    )
+    row.events = await all(
+      `SELECT id, title, category, recurrence, day_of_week AS "dayOfWeek",
+              event_date AS "eventDate", start_time AS "startTime",
+              duration_mins AS "durationMins", location, notes, color
+         FROM custom_events WHERE timetable_id = $1 ORDER BY start_time`,
+      [row.timetableId],
+    )
+  }
+
+  return rows
+}
+
+app.get(
+  '/api/follows',
+  requireAuth,
+  wrap(async (req, res) => {
+    res.json({ follows: await loadFollows(req.user.id) })
+  }),
+)
+
+app.post(
+  '/api/follows',
+  requireAuth,
+  wrap(async (req, res) => {
+    const token = String(req.body?.shareToken || '').trim()
+    if (!token) throw bad('Paste a share link or code')
+
+    const shared = await one(
+      'SELECT id, user_id AS "userId" FROM timetables WHERE share_token = $1 AND is_shared = true',
+      [token],
+    )
+    if (!shared) throw notFound('This timetable is not shared')
+    if (shared.userId === req.user.id) throw bad("You can't follow your own timetable")
+
+    await run(
+      `INSERT INTO followed_timetables (follower_id, timetable_id)
+       VALUES ($1, $2) ON CONFLICT (follower_id, timetable_id) DO NOTHING`,
+      [req.user.id, shared.id],
+    )
+    res.status(201).json({ follows: await loadFollows(req.user.id) })
+  }),
+)
+
+app.delete(
+  '/api/follows/:id',
+  requireAuth,
+  wrap(async (req, res) => {
+    await run('DELETE FROM followed_timetables WHERE id = $1 AND follower_id = $2', [
+      Number(req.params.id),
+      req.user.id,
+    ])
+    res.json({ follows: await loadFollows(req.user.id) })
+  }),
+)
+
 /* ------------------------------------------------------------------ misc -- */
 
 app.use((err, _req, res, _next) => {

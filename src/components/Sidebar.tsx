@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import type { CustomEvent, PickedClass, Timetable, TimetableSummary } from '../types'
+import type { CustomEvent, FollowedTimetable, PickedClass, Timetable, TimetableSummary } from '../types'
 import { CATEGORY_LABEL, categorySwatch, courseSwatch } from '../lib/colors'
 import { classLabel } from '../lib/labels'
 import { formatMins, formatRange, minutesOf } from '../lib/schedule'
+import { PeoplePanel } from './PeoplePanel'
 
 interface Props {
   timetable: Timetable
@@ -19,6 +20,11 @@ interface Props {
   onToggleShare: (shared: boolean) => void
   onExportIcs: () => void
   onExportImage: (format: 'png' | 'jpeg') => void
+  follows: FollowedTimetable[]
+  visibleFollowIds: Set<number>
+  onToggleFollowVisible: (id: number) => void
+  onAddFollow: (shareTokenOrLink: string) => Promise<boolean>
+  onRemoveFollow: (id: number) => void
 }
 
 export function Sidebar(props: Props) {
@@ -319,6 +325,14 @@ export function Sidebar(props: Props) {
           </button>
         </div>
       </section>
+
+      <PeoplePanel
+        follows={props.follows}
+        visibleIds={props.visibleFollowIds}
+        onToggleVisible={props.onToggleFollowVisible}
+        onAdd={props.onAddFollow}
+        onRemove={props.onRemoveFollow}
+      />
     </aside>
   )
 }

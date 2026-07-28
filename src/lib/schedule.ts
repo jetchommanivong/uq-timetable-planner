@@ -148,6 +148,23 @@ export function occurrencesForWeek(
 }
 
 /**
+ * Same expansion as `occurrencesForWeek`, tagged with whose schedule each
+ * block belongs to. Used to overlay a followed timetable on the viewer's own
+ * grid — `occurrencesForWeek` itself stays single-person since it also backs
+ * the share view and .ics/image export.
+ */
+export function taggedOccurrences(
+  classes: PickedClass[],
+  events: CustomEvent[],
+  weekStart: Date,
+  person?: { key: string; name: string },
+): Occurrence[] {
+  const occurrences = occurrencesForWeek(classes, events, weekStart)
+  if (!person) return occurrences
+  return occurrences.map((o) => ({ ...o, key: `${person.key}:${o.key}`, person }))
+}
+
+/**
  * Keys of blocks that overlap another block in time on the same day.
  * Recordings are excluded — they are watch-whenever, so they never truly clash.
  */
