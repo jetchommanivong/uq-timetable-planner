@@ -158,7 +158,7 @@ export function EventDialog({ initial, isEditing, onSave, onDelete, onDuplicate,
                     type="button"
                     aria-pressed={daysOfWeek.includes(d)}
                     onClick={() => toggleDay(d)}
-                    className={`rounded-md border px-1 py-2 text-sm font-medium transition ${
+                    className={`rounded-md border px-0.5 py-2 text-xs font-medium transition sm:px-1 sm:text-sm ${
                       daysOfWeek.includes(d)
                         ? 'border-indigo-600 bg-indigo-600 text-white'
                         : 'border-slate-200 text-slate-600 hover:border-slate-300'

@@ -25,6 +25,9 @@ interface Props {
   onToggleFollowVisible: (id: number) => void
   onAddFollow: (shareTokenOrLink: string) => Promise<boolean>
   onRemoveFollow: (id: number) => void
+  /** Controls the slide-in drawer presentation below the `md` breakpoint. */
+  open: boolean
+  onClose: () => void
 }
 
 export function Sidebar(props: Props) {
@@ -61,8 +64,32 @@ export function Sidebar(props: Props) {
   }
 
   return (
-    <aside className="thin-scroll flex w-96 shrink-0 flex-col gap-7 overflow-y-auto border-r border-slate-200 bg-white p-5">
-      {/*
+    <>
+      {/* Below `md`, the sidebar is a slide-in drawer — this dims and closes it. */}
+      {props.open && (
+        <div
+          className="fixed inset-0 z-30 bg-slate-900/40 md:hidden"
+          onClick={props.onClose}
+          aria-hidden
+        />
+      )}
+      <aside
+        className={`thin-scroll fixed inset-y-0 left-0 z-40 flex w-[85vw] max-w-96 shrink-0 flex-col gap-7 overflow-y-auto border-r border-slate-200 bg-white p-5 transition-transform duration-200 ease-out ${
+          props.open ? 'translate-x-0' : '-translate-x-full'
+        } md:static md:z-auto md:w-96 md:max-w-none md:translate-x-0 md:transition-none`}
+      >
+        <div className="flex items-center justify-between md:hidden">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Menu</h2>
+          <button
+            onClick={props.onClose}
+            aria-label="Close menu"
+            className="rounded px-2 text-xl leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            ×
+          </button>
+        </div>
+
+        {/*
         Timetable management. New and Delete sit together here rather than at
         opposite ends of the sidebar, and neither sits next to "Add a class" —
         those used to look alike and get clicked by mistake.
@@ -333,6 +360,7 @@ export function Sidebar(props: Props) {
         onAdd={props.onAddFollow}
         onRemove={props.onRemoveFollow}
       />
-    </aside>
+      </aside>
+    </>
   )
 }

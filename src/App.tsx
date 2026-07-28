@@ -38,6 +38,7 @@ function PlannerApp() {
   const [timetable, setTimetable] = useState<Timetable | null>(null)
   const [follows, setFollows] = useState<FollowedTimetable[]>([])
   const [visibleFollowIds, setVisibleFollowIds] = useState<Set<number>>(new Set())
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()))
   const [searchOpen, setSearchOpen] = useState(false)
   // `editing: false` with an event present means "duplicate this one".
@@ -272,8 +273,19 @@ function PlannerApp() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
-        <h1 className="text-base font-bold tracking-tight text-slate-900">UQ Timetable Planner</h1>
-        <span className="ml-auto text-sm text-slate-500">{user.displayName}</span>
+        <button
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open menu"
+          className="shrink-0 rounded-lg border border-slate-300 px-2.5 py-1.5 text-base text-slate-600 hover:bg-slate-50 md:hidden"
+        >
+          ☰
+        </button>
+        <h1 className="min-w-0 flex-1 truncate text-base font-bold tracking-tight text-slate-900 md:flex-none">
+          UQ Timetable Planner
+        </h1>
+        <span className="ml-auto max-w-[35vw] truncate text-sm text-slate-500 md:max-w-none">
+          {user.displayName}
+        </span>
         <button
           onClick={async () => {
             await api.logout()
@@ -337,6 +349,8 @@ function PlannerApp() {
               onToggleFollowVisible={handleToggleFollowVisible}
               onAddFollow={handleAddFollow}
               onRemoveFollow={handleRemoveFollow}
+              open={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
             />
 
             <main className="flex min-w-0 flex-1 flex-col gap-3 p-4">
@@ -346,7 +360,7 @@ function PlannerApp() {
                   onChange={setWeekStart}
                   classes={timetable.classes}
                 />
-                <p className="ml-auto text-sm text-slate-400">
+                <p className="ml-auto hidden text-sm text-slate-400 md:block">
                   Click a class to remove it · click an event to edit
                 </p>
               </div>
