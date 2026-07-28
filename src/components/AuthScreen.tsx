@@ -78,7 +78,7 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: (user: User) => void })
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="s1234567@student.uq.edu.au"
+                placeholder="email@gmail.com"
                 required
               />
             </Field>
