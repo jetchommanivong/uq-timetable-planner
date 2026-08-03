@@ -167,6 +167,11 @@ export function taggedOccurrences(
 /**
  * Keys of blocks that overlap another block in time on the same day.
  * Recordings are excluded — they are watch-whenever, so they never truly clash.
+ *
+ * Blocks are compared only against others from the same timetable. Your 10am
+ * lecture landing on a friend's 10am tutorial is the normal state of two
+ * separate lives, not a double-booking, and flagging it in red made a grid with
+ * anyone overlaid look like a wall of errors.
  */
 export function findClashes(occurrences: Occurrence[]): Set<string> {
   const clashing = new Set<string>()
@@ -174,18 +179,56 @@ export function findClashes(occurrences: Occurrence[]): Set<string> {
     (o) => !/delayed viewing|recorded/i.test(`${o.location || ''} ${o.subtitle}`),
   )
 
-  for (const day of DAYS) {
-    const inDay = attended.filter((o) => o.day === day)
-    for (let i = 0; i < inDay.length; i++) {
-      for (let j = i + 1; j < inDay.length; j++) {
-        if (inDay[i].startMins < inDay[j].endMins && inDay[j].startMins < inDay[i].endMins) {
-          clashing.add(inDay[i].key)
-          clashing.add(inDay[j].key)
+  const owners = new Set(attended.map((o) => o.person?.key ?? ''))
+  for (const owner of owners) {
+    const mine = attended.filter((o) => (o.person?.key ?? '') === owner)
+    for (const day of DAYS) {
+      const inDay = mine.filter((o) => o.day === day)
+      for (let i = 0; i < inDay.length; i++) {
+        for (let j = i + 1; j < inDay.length; j++) {
+          if (inDay[i].startMins < inDay[j].endMins && inDay[j].startMins < inDay[i].endMins) {
+            clashing.add(inDay[i].key)
+            clashing.add(inDay[j].key)
+          }
         }
       }
     }
   }
   return clashing
+}
+
+/** A contiguous stretch of one person's day, drawn as a single rail bar. */
+export interface RailSegment {
+  key: string
+  startMins: number
+  endMins: number
+  /** Everything inside the stretch, in order — what the hover card lists. */
+  parts: Occurrence[]
+}
+
+/**
+ * Collapses one person's blocks for a single day into unbroken busy stretches.
+ *
+ * A followed timetable is glanced at, not read: what matters is when someone is
+ * tied up, so back-to-back classes merge into one bar rather than a stack of
+ * slivers too thin to tell apart. The parts survive for the hover card.
+ */
+export function railSegments(occurrences: Occurrence[]): RailSegment[] {
+  const sorted = [...occurrences].sort((a, b) => a.startMins - b.startMins || a.endMins - b.endMins)
+  const segments: RailSegment[] = []
+
+  for (const o of sorted) {
+    const last = segments[segments.length - 1]
+    // `<=` so classes that merely touch still read as one continuous stretch.
+    if (last && o.startMins <= last.endMins) {
+      last.endMins = Math.max(last.endMins, o.endMins)
+      last.parts.push(o)
+    } else {
+      segments.push({ key: o.key, startMins: o.startMins, endMins: o.endMins, parts: [o] })
+    }
+  }
+
+  return segments
 }
 
 export interface PositionedOccurrence extends Occurrence {

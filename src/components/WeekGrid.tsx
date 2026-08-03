@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { CustomEvent, Day, Occurrence, PickedClass } from '../types'
 import { DAYS } from '../types'
-import { categorySwatch, courseSwatch, personSwatch } from '../lib/colors'
+import { categorySwatch, courseSwatch, personSwatch, type Swatch } from '../lib/colors'
 import {
   addDays,
   findClashes,
@@ -9,11 +9,31 @@ import {
   formatRange,
   gridBounds,
   layoutDay,
+  railSegments,
   taggedOccurrences,
   toISO,
+  type RailSegment,
 } from '../lib/schedule'
 
 const PX_PER_MIN = 1.35
+
+// Followed timetables live in narrow rails down the right of each day rather
+// than sharing columns with your own blocks. Splitting the column evenly meant
+// one friend halved your classes and three quartered them, which made your own
+// timetable — the thing you actually came to read — the least legible part of
+// the screen.
+const RAIL_GAP = 2
+
+/** Roughly a hover card's height — below this, cards grow upwards instead. */
+const CARD_CLEARANCE = 180
+
+/** Rails thin out past a few people so the day never loses more than ~44px. */
+function railWidth(peopleCount: number): number {
+  if (peopleCount === 0) return 0
+  if (peopleCount <= 2) return 14
+  if (peopleCount <= 4) return 10
+  return 7
+}
 
 /** Today's weekday, in the same Mon-first order as `DAYS`. */
 function todaysDay(): Day {
@@ -47,17 +67,37 @@ export function WeekGrid({
   onSelectEvent,
   onRemoveClass,
 }: Props) {
-  const occurrences = useMemo(() => {
-    const own = taggedOccurrences(classes, events, weekStart)
-    const others = overlays.flatMap((p) =>
-      taggedOccurrences(p.classes, p.events, weekStart, { key: p.key, name: p.name }),
-    )
-    return [...own, ...others]
-  }, [classes, events, weekStart, overlays])
-  const clashes = useMemo(() => findClashes(occurrences), [occurrences])
+  const own = useMemo(
+    () => taggedOccurrences(classes, events, weekStart),
+    [classes, events, weekStart],
+  )
+
+  /** One rail per followed person, with their colour and this week's blocks. */
+  const people = useMemo(
+    () =>
+      overlays.map((p) => ({
+        ...p,
+        swatch: personSwatch(p.key),
+        occurrences: taggedOccurrences(p.classes, p.events, weekStart, {
+          key: p.key,
+          name: p.name,
+        }),
+      })),
+    [overlays, weekStart],
+  )
+
+  const occurrences = useMemo(
+    () => [...own, ...people.flatMap((p) => p.occurrences)],
+    [own, people],
+  )
+  const clashes = useMemo(() => findClashes(own), [own])
+  // Bounds span everyone, so a friend's 8am never falls off the top of the grid.
   const bounds = useMemo(() => gridBounds(occurrences), [occurrences])
   // Which days have anything on them, so the mobile tabs can hint at it.
   const daysWithOccurrences = useMemo(() => new Set(occurrences.map((o) => o.day)), [occurrences])
+
+  const railW = railWidth(people.length)
+  const railsWidth = people.length ? people.length * (railW + RAIL_GAP) + RAIL_GAP : 0
 
   // Below `md` only one day renders at a time; persists across week
   // navigation rather than resetting, since staying on "Wednesday" when you
@@ -72,6 +112,29 @@ export function WeekGrid({
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {/* Names the rails. Without it the coloured stripes are unreadable, since
+          the People list that explains them lives in the sidebar. */}
+      {people.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 bg-slate-50/80 px-3 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Also showing
+          </span>
+          {people.map((p) => (
+            <span key={p.key} className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+              <span
+                className="h-2.5 w-2.5 rounded-sm"
+                style={{ background: p.swatch.dot }}
+                aria-hidden
+              />
+              {p.name}
+            </span>
+          ))}
+          <span className="ml-auto hidden text-xs text-slate-400 sm:block">
+            Hover a stripe for details
+          </span>
+        </div>
+      )}
+
       {/* Mobile-only day switcher, replacing the 7-wide header below `md`. */}
       <div className="flex gap-1 border-b border-slate-200 bg-slate-50/80 p-1.5 md:hidden">
         {DAYS.map((day, i) => {
@@ -146,7 +209,7 @@ export function WeekGrid({
 
           {DAYS.map((day, i) => {
             const date = toISO(addDays(weekStart, i))
-            const dayOccurrences = layoutDay(occurrences.filter((o) => o.day === day))
+            const dayOccurrences = layoutDay(own.filter((o) => o.day === day))
             return (
               <div
                 key={day}
@@ -164,18 +227,50 @@ export function WeekGrid({
 
                 {date === todayISO && <NowLine bounds={bounds} />}
 
-                {dayOccurrences.map((o) => (
-                  <Block
-                    key={o.key}
-                    occurrence={o}
-                    top={(o.startMins - bounds.start) * PX_PER_MIN}
-                    height={Math.max((o.endMins - o.startMins) * PX_PER_MIN, 22)}
-                    clashing={clashes.has(o.key)}
-                    readOnly={readOnly}
-                    onSelectEvent={onSelectEvent}
-                    onRemoveClass={onRemoveClass}
-                  />
-                ))}
+                {/* Your own blocks own everything the rails don't take. */}
+                <div className="absolute inset-y-0 left-0" style={{ right: railsWidth }}>
+                  {dayOccurrences.map((o) => (
+                    <Block
+                      key={o.key}
+                      occurrence={o}
+                      top={(o.startMins - bounds.start) * PX_PER_MIN}
+                      height={Math.max((o.endMins - o.startMins) * PX_PER_MIN, 22)}
+                      clashing={clashes.has(o.key)}
+                      readOnly={readOnly}
+                      onSelectEvent={onSelectEvent}
+                      onRemoveClass={onRemoveClass}
+                    />
+                  ))}
+                </div>
+
+                {/* The gutter is tinted so a stripe reads as part of this day
+                    rather than floating against the next day's border. */}
+                {people.length > 0 && (
+                  <div
+                    className="absolute inset-y-0 right-0 flex border-l border-slate-200/70 bg-slate-50/70"
+                    style={{ width: railsWidth, gap: RAIL_GAP, paddingRight: RAIL_GAP }}
+                  >
+                    {people.map((p) => (
+                      <div key={p.key} className="relative h-full" style={{ width: railW }}>
+                        {railSegments(p.occurrences.filter((o) => o.day === day)).map((seg) => {
+                          const segTop = (seg.startMins - bounds.start) * PX_PER_MIN
+                          return (
+                            <Rail
+                              key={seg.key}
+                              segment={seg}
+                              personName={p.name}
+                              swatch={p.swatch}
+                              top={segTop}
+                              height={Math.max((seg.endMins - seg.startMins) * PX_PER_MIN, 10)}
+                              openRight={i <= 2}
+                              alignBottom={segTop > height - CARD_CLEARANCE}
+                            />
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -199,6 +294,93 @@ function NowLine({ bounds }: { bounds: { start: number; end: number } }) {
   )
 }
 
+interface RailProps {
+  segment: RailSegment
+  personName: string
+  swatch: Swatch
+  top: number
+  height: number
+  /** Open the card rightwards; set for the leftmost desktop columns. */
+  openRight: boolean
+  /** Grow the card upwards, for stripes near the bottom of the grid. */
+  alignBottom: boolean
+}
+
+/**
+ * One stripe of a followed person's day. Too narrow for text by design — the
+ * detail lives in a card that opens on hover or keyboard focus.
+ *
+ * The card is nested inside two clipping ancestors, so it has to open towards
+ * the middle of the grid: leftwards from the later columns, rightwards from the
+ * first few, and upwards from stripes low enough that it would overrun the
+ * bottom. Below `md` a single full-width day renders, so leftwards always fits.
+ */
+function Rail({ segment, personName, swatch, top, height, openRight, alignBottom }: RailProps) {
+  // One class needs no "busy 9–10, containing: 9–10" preamble; several do.
+  const label =
+    segment.parts.length === 1
+      ? `${personName} · ${segment.parts[0].title} ${segment.parts[0].subtitle}, ${formatRange(segment.startMins, segment.endMins)}`
+      : `${personName} · busy ${formatRange(segment.startMins, segment.endMins)}: ${segment.parts
+          .map((p) => `${p.title} ${formatRange(p.startMins, p.endMins)}`)
+          .join(', ')}`
+
+  return (
+    <div
+      className="group absolute inset-x-0"
+      style={{ top, height }}
+      tabIndex={0}
+      role="button"
+      aria-label={label}
+    >
+      <div
+        className="h-full w-full rounded-[3px] opacity-75 transition group-hover:opacity-100 group-focus-visible:opacity-100"
+        style={{ background: swatch.dot }}
+      >
+        {/* Hairlines where one commitment ends and the next begins, so a merged
+            stripe still shows it is more than a single class. */}
+        {segment.parts.slice(1).map((p) => (
+          <div
+            key={p.key}
+            className="absolute inset-x-0 border-t border-white/60"
+            style={{ top: (p.startMins - segment.startMins) * PX_PER_MIN }}
+          />
+        ))}
+      </div>
+
+      <div
+        className={`pointer-events-none absolute right-full z-40 mr-1.5 hidden w-52 rounded-lg border border-slate-200 bg-white p-2.5 text-left shadow-lg group-hover:block group-focus-within:block ${
+          alignBottom ? 'bottom-0' : 'top-0'
+        } ${openRight ? 'md:left-full md:right-auto md:ml-1.5 md:mr-0' : ''}`}
+      >
+        <div className="flex items-center gap-1.5">
+          <span
+            className="h-2.5 w-2.5 shrink-0 rounded-sm"
+            style={{ background: swatch.dot }}
+            aria-hidden
+          />
+          <span className="truncate text-xs font-semibold text-slate-900">{personName}</span>
+          <span className="ml-auto shrink-0 text-[11px] text-slate-400">
+            {formatMins(segment.startMins)}–{formatMins(segment.endMins)}
+          </span>
+        </div>
+        <ul className="mt-1.5 space-y-1.5">
+          {segment.parts.map((p) => (
+            <li key={p.key} className="border-l-2 pl-2" style={{ borderColor: swatch.border }}>
+              <div className="truncate text-xs font-medium text-slate-800">{p.title}</div>
+              <div className="truncate text-[11px] text-slate-500">
+                {formatRange(p.startMins, p.endMins)} · {p.subtitle}
+              </div>
+              {p.location && (
+                <div className="truncate text-[11px] text-slate-400">{p.location}</div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 interface BlockProps {
   occurrence: ReturnType<typeof layoutDay>[number]
   top: number
@@ -218,25 +400,21 @@ function Block({
   onSelectEvent,
   onRemoveClass,
 }: BlockProps) {
-  const swatch = o.person
-    ? personSwatch(o.person.key)
-    : o.kind === 'class'
-      ? courseSwatch(o.title)
-      : categorySwatch(o.category ?? 'other')
+  // Only your own occurrences reach here; followed people render as rails.
+  const swatch = o.kind === 'class' ? courseSwatch(o.title) : categorySwatch(o.category ?? 'other')
 
   const widthPct = 100 / o.columnCount
   const compact = height < 56
 
-  // Overlay blocks belong to someone else's timetable — never clickable.
-  const clickable = !readOnly && !o.person && (o.kind === 'event' ? !!onSelectEvent : !!onRemoveClass)
+  const clickable = !readOnly && (o.kind === 'event' ? !!onSelectEvent : !!onRemoveClass)
 
   function handleClick() {
-    if (readOnly || o.person) return
+    if (readOnly) return
     if (o.kind === 'event' && o.eventRef) onSelectEvent?.(o.eventRef)
     if (o.kind === 'class' && o.classRef) onRemoveClass?.(o.classRef)
   }
 
-  const subtitle = o.person ? `${o.person.name} · ${o.subtitle}` : o.subtitle
+  const subtitle = o.subtitle
 
   return (
     <div

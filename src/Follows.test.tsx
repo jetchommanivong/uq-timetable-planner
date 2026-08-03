@@ -78,11 +78,15 @@ describe('following someone else\'s timetable', () => {
     await user.type(input, 'https://example.com/s/alex-token')
     await user.click(screen.getByRole('button', { name: 'Add' }))
 
-    // Follower shows up in the People list.
-    expect(await screen.findByText('Alex')).toBeDefined()
+    // Follower shows up in the People list, and again in the grid's legend.
+    await waitFor(() => expect(screen.getAllByText('Alex').length).toBeGreaterThan(1))
 
-    // Their class renders as an overlay block, distinctly labelled.
-    expect(await screen.findByText('COMP3506')).toBeDefined()
-    expect(screen.getByText(/Alex · Studio/)).toBeDefined()
+    // Their class renders as a rail rather than a block that steals column
+    // width, so the detail lives on the rail's accessible name.
+    expect(await screen.findByLabelText(/^Alex · COMP3506 Studio, 1pm/)).toBeDefined()
+
+    // Their class must not squeeze the viewer's own block out of full width.
+    const mine = screen.getByTitle(/DECO3500 · Studio/)
+    expect(mine.style.width).toBe('calc(100% - 4px)')
   })
 })
